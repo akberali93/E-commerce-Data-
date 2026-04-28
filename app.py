@@ -1,103 +1,111 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from streamlit_option_menu import option_menu
 
-st.title("E Commerce Sales Data Analysis Dashboard")
+st.set_page_config(layout="wide")
 
-st.cache_data
-def load_data(file_path):
-    data = pd.read_csv(file_path)  
-    return data
+st.title("E-commerce Store Dashboard ")
 
-data_path = "ecommerce.csv" 
-data = load_data(data_path)
+# Load Data
+@st.cache_data
+def load_data():
+    return pd.read_csv("ecommerce.csv")
 
-st.sidebar.header("Filters")
+df = load_data()
 
-select_city = st.sidebar.multiselect(
-    "Select City", options=data["City"].unique(), default=data["City"].unique()
+# -------- NAVBAR -------- #
+selected = option_menu(
+    menu_title=None,
+    options=["Home", "Product Analysis", "City Insights", "Comparison", "Data Explorer"],
+    icons=["house","box","geo","bar-chart","table"],
+    orientation="horizontal"
 )
 
-select_product = st.sidebar.multiselect(
-    "Select Product", options=data["Product Name"].unique(), default=data["Product Name"].unique()
-)
+# -------- HOME -------- #
+if selected == "Home":
+    st.subheader("Overview")
 
-select_segment = st.sidebar.multiselect(
-    "Select Segment", options=data["Segment"].unique(), default=data["Segment"].unique()
-)
+    col1, col2, col3, col4 = st.columns(4)
 
-select_category = st.sidebar.multiselect(
-    "Select Category", options=data["Category"].unique(), default=data["Category"].unique()
-)
-filtered_data = data[
-    (data["City"].isin(select_city)) &
-    (data["Product Name"].isin(select_product)) &
-    (data["Segment"].isin(select_segment)) &
-    (data["Category"].isin(select_category))
-]
- 
-st.dataframe(filtered_data)
+    col1.metric("Total Orders", df["Row ID"].nunique())
+    col2.metric("Total Sales", round(df["Sales"].sum(),2))
+    col3.metric("Total Profit", round(df["Profit"].sum(),2))
+    col4.metric("Total Quantity", df["Quantity"].sum())
 
-total_sales = filtered_data["Sales"].sum().round(2)
-total_profit = filtered_data["Profit"].sum().round(2)
-total_discount = filtered_data["Discount"].sum().round(2)
-total_quantity = filtered_data["Quantity"].sum().round(2)
-cust_row = filtered_data["Row ID"].nunique()
+    st.dataframe(df.head())
 
-st.subheader("Key Metrics")
+# -------- PRODUCT ANALYSIS -------- #
+elif selected == "Product Analysis":
+    st.subheader("Product Analysis")
 
-col1, col2, col3, col4, col5 = st.columns(5)
+    product = st.selectbox("Select Product", df["Product Name"])
 
-with col1:
-    st.metric(label="Total Customers", value=cust_row)
+    pdata = df[df["Product Name"] == product]
 
-with col2:
-    st.metric(label="Total Sales", value=total_sales)
+    col1, col2, col3 = st.columns(3)
 
-with col3:
-    st.metric(label="Total Profit", value=total_profit)
+    col1.metric("Sales", round(pdata["Sales"].sum(),2))
+    col2.metric("Profit", round(pdata["Profit"].sum(),2))
+    col3.metric("Quantity", pdata["Quantity"].sum())
 
-with col4:
-    st.metric(label="Total Quantity", value=total_quantity)
-
-with col5:
-    st.metric(label="Total Discount", value=total_discount)
-
-col7, col8 = st.columns(2)
-
-sales_by_country = filtered_data.groupby("Country")["Sales"].sum().reset_index()
-
-with col7:
-    fig_country = px.bar(
-        sales_by_country,
-        x="Country",
+    fig = px.bar(
+        pdata,
+        x="City",
         y="Sales",
-        title="Total Sales By Country",
-        text="Sales",
-        color="Country"
+        color="City",
+        title="Sales by City"
     )
-    st.plotly_chart(fig_country, use_container_width=True)
 
-sales_by_region = filtered_data.groupby("Region")["Sales"].sum().reset_index()
+    st.plotly_chart(fig, use_container_width=True)
 
-with col8:
-    fig_region = px.bar(
-        sales_by_region,
-        x="Region",
-        y="Sales",
-        title="Total Sales By Region",
-        text="Sales",
-        color="Region"
+# -------- CITY INSIGHTS -------- #
+elif selected == "City Insights":
+    st.subheader("City Insights")
+
+    # Top 5 cities only
+    city_sales = (
+        df.groupby("City")["Sales"]
+        .sum()
+        .reset_index()
+        .sort_values(by="Sales", ascending=False)
+        .head(5)   #  sirf top 5
     )
-    st.plotly_chart(fig_region, use_container_width=True)
 
-sales_by_city = filtered_data.groupby("City")["Sales"].sum().reset_index()
+    fig = px.pie(
+        city_sales,
+        names="City",
+        values="Sales",
+        title="Top 5 Cities by Sales",
+        hole=0.4
+    )
 
-fig_city_pie = px.pie(
-    sales_by_city,
-    values="Sales",
-    names="City",
-    title="Sales Distribution by City",
-    hole=0.4
-)
-st.plotly_chart(fig_city_pie, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
+# -------- COMPARISON -------- #
+elif selected == "Comparison":
+    st.subheader("Product Comparison")
+
+    products = st.multiselect(
+        "Select Products",
+        df["Product Name"].unique(),
+        default=df["Product Name"].unique()[:5]
+    )
+
+    compare = df[df["Product Name"].isin(products)]
+
+    fig = px.scatter(
+        compare,
+        x="Sales",
+        y="Profit",
+        size="Quantity",
+        color="Category",
+        hover_name="Product Name",
+        title="Sales vs Profit"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+# -------- DATA EXPLORER -------- #
+elif selected == "Data Explorer":
+    st.subheader("Full Dataset")
+    st.dataframe(df)
